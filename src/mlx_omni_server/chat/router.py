@@ -13,8 +13,22 @@ router = APIRouter(tags=["chat—completions"])
 
 @router.post("/chat/completions", response_model=ChatCompletionResponse)
 @router.post("/v1/chat/completions", response_model=ChatCompletionResponse)
-async def create_chat_completion(request: ChatCompletionRequest):
+@router.options("/chat/completions")
+@router.options("/v1/chat/completions")
+async def create_chat_completion(request: ChatCompletionRequest = None):
     """Create a chat completion"""
+    
+    # Handle OPTIONS preflight request
+    if request is None:
+        return JSONResponse(
+            content={},
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Max-Age": "86400",
+            }
+        )
 
     text_model = _create_text_model(
         request.model, request.get_extra_params().get("adapter_path")
@@ -25,10 +39,23 @@ async def create_chat_completion(request: ChatCompletionRequest):
         return JSONResponse(content=completion.model_dump(exclude_none=True))
 
     async def event_generator() -> Generator[str, None, None]:
-        for chunk in text_model.stream_generate(request):
-            yield f"data: {json.dumps(chunk.model_dump(exclude_none=True))}\n\n"
-
-        yield "data: [DONE]\n\n"
+        try:
+            for chunk in text_model.stream_generate(request):
+                chunk_data = f"data: {json.dumps(chunk.model_dump(exclude_none=True))}\n\n"
+                yield chunk_data
+                # Force flush by yielding immediately
+        except Exception as e:
+            # Send error as Server-Sent Event
+            error_data = {
+                "error": {
+                    "message": str(e),
+                    "type": "server_error",
+                    "code": 500
+                }
+            }
+            yield f"data: {json.dumps(error_data)}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
 
     return StreamingResponse(
         event_generator(),
@@ -36,6 +63,12 @@ async def create_chat_completion(request: ChatCompletionRequest):
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Expose-Headers": "*",
+            "Access-Control-Allow-Credentials": "true",
+            "Transfer-Encoding": "chunked",
         },
     )
 
