@@ -62,9 +62,17 @@ class MistralChatTokenizer(ChatTokenizer):
 
                         # Get arguments and ensure they're a JSON string
                         args = call.get("arguments", call.get("parameters", {}))
-                        if isinstance(args, str):
-                            # Already a JSON string
-                            arguments = args
+                        
+                        # Handle null arguments - convert to empty JSON object
+                        if args is None or (isinstance(args, str) and args == "null"):
+                            arguments = "{}"
+                        elif isinstance(args, str):
+                            # Validate it's proper JSON, if not make it empty object
+                            try:
+                                json.loads(args)  # Validate JSON
+                                arguments = args
+                            except json.JSONDecodeError:
+                                arguments = "{}"
                         else:
                             # Convert dict to JSON string
                             arguments = json.dumps(args)

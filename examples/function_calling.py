@@ -8,7 +8,7 @@ client = OpenAI(
 )
 
 
-def chat(model: str = "mlx-community/Llama-3.2-3B-Instruct-4bit"):
+def chat(model: str = "mlx-community/Qwen3-8B-4bit"):
     tools = [
         {
             "type": "function",
@@ -38,7 +38,7 @@ def chat(model: str = "mlx-community/Llama-3.2-3B-Instruct-4bit"):
 
 
 if __name__ == "__main__":
-    completion = chat(model="mlx-community/Llama-3.2-3B-Instruct-4bit")
+    completion = chat(model="mlx-community/Qwen3-8B-4bit")
     message = completion.choices[0].message
     print(f"message: {message}")
     if message.tool_calls:

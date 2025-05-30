@@ -4,8 +4,8 @@ from openai import OpenAI
 
 # Configure client to use local server
 client = OpenAI(
-    base_url="http://localhost:11434/v1",  # Point to ollama server
-    # base_url="http://localhost:10240/v1",  # Point to mlx omni server
+    # base_url="http://localhost:11434/v1",  # Point to ollama server
+    base_url="http://localhost:10240/v1",  # Point to mlx omni server
     api_key="not-needed",  # API key is not required for local server
 )
 
@@ -42,7 +42,7 @@ tools = [
 ]
 
 response_stream = client.chat.completions.create(
-    model="llama3.2:3b",
+    model="mlx-community/Qwen3-8B-4bit",
     messages=[
         {
             "role": "system",
@@ -69,7 +69,7 @@ for part in response_stream:
     finish_reason = part.choices[0].finish_reason
 
     # Process assistant content
-    if "content" in delta:
+    if delta.content:
         print("Assistant:", delta.content)
 
     if delta.tool_calls:

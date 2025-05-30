@@ -53,7 +53,20 @@ def parse_tool_calls(text: str) -> Optional[list[ToolCall]]:
             for call in tool_calls:
                 # Process arguments
                 args = call["arguments"]
-                arguments = args if isinstance(args, str) else json.dumps(args)
+                
+                # Handle null arguments - convert to empty JSON object
+                if args == "null" or args is None:
+                    arguments = "{}"
+                elif isinstance(args, str):
+                    # Try to validate it's proper JSON, if not make it empty object
+                    try:
+                        json.loads(args)  # Validate JSON
+                        arguments = args
+                    except json.JSONDecodeError:
+                        arguments = "{}"
+                else:
+                    # Convert dict to JSON string
+                    arguments = json.dumps(args)
 
                 tool_call = ToolCall(
                     id=f"call_{uuid.uuid4().hex[:8]}",

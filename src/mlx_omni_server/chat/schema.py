@@ -89,6 +89,29 @@ class ChatMessage(BaseModel):
         json_encoders = {bytes: lambda v: v.decode()}
 
 
+class DeltaToolCall(BaseModel):
+    """Tool call in streaming delta with required index field."""
+    
+    index: int  # Required field for streaming API compatibility
+    id: Optional[str] = None
+    type: Optional[ToolType] = None
+    function: Optional[FunctionCall] = None
+
+
+class ChatDelta(BaseModel):
+    """Delta message for streaming responses with proper tool_calls support."""
+    
+    role: Optional[Role] = None
+    content: Optional[str] = None
+    reasoning: Optional[str] = None
+    name: Optional[str] = None
+    tool_calls: Optional[List[DeltaToolCall]] = None
+    tool_call_id: Optional[str] = None
+
+    class Config:
+        json_encoders = {bytes: lambda v: v.decode()}
+
+
 class ChatCompletionUsageDetails(BaseModel):
     reasoning_tokens: int = 0
     accepted_prediction_tokens: int = 0
@@ -118,9 +141,9 @@ class ChatCompletionChoice(BaseModel):
 
 class ChatCompletionChunkChoice(BaseModel):
     index: int
-    delta: ChatMessage
-    finish_reason: Optional[str] = None
-    logprobs: Optional[Any] = None
+    delta: ChatDelta  # Use ChatDelta instead of ChatMessage for proper streaming support
+    finish_reason: Optional[str] = None  # OpenAI API требует это поле, даже если None
+    logprobs: Optional[Any] = None  # OpenAI API требует это поле, даже если None
 
 
 class ChatCompletionChunk(BaseModel):
@@ -129,7 +152,7 @@ class ChatCompletionChunk(BaseModel):
     created: int
     model: str
     choices: List[ChatCompletionChunkChoice]
-    system_fingerprint: Optional[str] = None
+    system_fingerprint: Optional[str] = None  # Добавляем поле из правильной структуры
     usage: Optional[ChatCompletionUsage] = None
 
 

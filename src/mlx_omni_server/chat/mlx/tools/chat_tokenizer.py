@@ -72,10 +72,33 @@ class ChatTokenizer(ABC):
 
     @abstractmethod
     def decode_stream(self, text: str) -> Optional[List[ToolCall]]:
-        """Parse tool calls from model output."""
+        """Parse tool calls from streaming model output.
+        
+        This method is called during streaming to detect tool calls
+        as they are being generated. It should handle partial/incomplete
+        tool call JSON gracefully.
+        
+        Args:
+            text: Accumulated text so far from the model
+            
+        Returns:
+            List of ToolCall objects if complete tool calls are detected,
+            None otherwise
+        """
         pass
 
     @abstractmethod
     def decode(self, text: str) -> Optional[ChatMessage]:
-        """Parse tool calls from model output."""
+        """Parse tool calls from complete model output.
+        
+        This method is called with the complete response text to
+        extract any tool calls and format them properly.
+        
+        Args:
+            text: Complete text output from the model
+            
+        Returns:
+            ChatMessage with tool_calls populated if any are found,
+            or with content if no tool calls
+        """
         pass

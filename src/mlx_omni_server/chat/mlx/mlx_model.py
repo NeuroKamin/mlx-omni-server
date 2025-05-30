@@ -17,6 +17,8 @@ from ..schema import (
     ChatCompletionResponse,
     ChatCompletionUsage,
     ChatMessage,
+    ChatDelta,
+    DeltaToolCall,
     Role,
 )
 from ..text_models import BaseTextModel, GenerateResult, GenerationParams
@@ -372,6 +374,7 @@ class MLXModel(BaseTextModel):
                 id=f"chatcmpl-{uuid.uuid4().hex[:10]}",
                 created=int(time.time()),
                 model=request.model,
+                system_fingerprint=request.model,
                 choices=[
                     ChatCompletionChoice(
                         index=0,
@@ -407,48 +410,84 @@ class MLXModel(BaseTextModel):
             chat_id = f"chatcmpl-{uuid.uuid4().hex[:10]}"
 
             completion = ""
+            # Track the completion for final processing
+            full_completion = ""
+            
             for result in self._stream_generate(request=request):
                 created = int(time.time())
                 completion += result.text
+                full_completion += result.text
 
-                message = None
-                enable_thinking = self._reasoning_decoder.enable_thinking
-                if enable_thinking:
-                    reasoning_result = self._reasoning_decoder.stream_decode(
-                        result.text
-                    )
-                    if reasoning_result:
-                        logger.debug(f"Reasoning result:\n{reasoning_result}")
-                        delta_content = reasoning_result.get("delta_content")
-                        delta_reasoning = (
-                            reasoning_result.get("delta_reasoning") or None
-                        )
-                        if delta_content:
-                            message = ChatMessage(
-                                role=Role.ASSISTANT,
-                                content=delta_content or result.text,
-                            )
-                        elif delta_reasoning:
-                            message = ChatMessage(
-                                role=Role.ASSISTANT, reasoning=delta_reasoning
-                            )
+                # Simple streaming: only delta.content and delta.role
+                # No reasoning, no tool_calls in intermediate chunks
+                delta_message = ChatDelta(role=Role.ASSISTANT, content=result.text)
 
-                if message is None:
-                    message = ChatMessage(role=Role.ASSISTANT, content=result.text)
-
+                # Always send finish_reason=None for intermediate chunks
                 yield ChatCompletionChunk(
                     id=chat_id,
                     created=created,
                     model=request.model,
+                    system_fingerprint=request.model,
                     choices=[
                         ChatCompletionChunkChoice(
                             index=0,
-                            delta=message,
-                            finish_reason=result.finish_reason,
+                            delta=delta_message,
+                            finish_reason=None,  # Always None for intermediate chunks
                             logprobs=result.logprobs,
                         )
                     ],
                 )
+
+            # Final chunk with actual finish_reason and processed content
+            created = int(time.time())
+            final_finish_reason = "stop"
+            final_delta = ChatDelta()  # Empty delta for final chunk
+            
+            # Process final completion for reasoning and tool calls
+            enable_thinking = self._reasoning_decoder.enable_thinking
+            if enable_thinking:
+                reasoning_result = self._reasoning_decoder.decode(full_completion)
+                if reasoning_result:
+                    logger.debug(f"Final reasoning result:\n{reasoning_result}")
+                    full_completion = reasoning_result.get("content") or full_completion
+
+            # Check for tool calls in final completion
+            if request.tools:
+                try:
+                    parsed_message = self._chat_tokenizer.decode(full_completion)
+                    if parsed_message and parsed_message.tool_calls:
+                        # Convert ToolCall objects to DeltaToolCall with proper index
+                        delta_tool_calls = []
+                        for i, tool_call in enumerate(parsed_message.tool_calls):
+                            delta_tool_call = DeltaToolCall(
+                                index=i,  # Add required index field
+                                id=tool_call.id,
+                                type=tool_call.type,
+                                function=tool_call.function,
+                            )
+                            delta_tool_calls.append(delta_tool_call)
+                        
+                        # Final chunk with tool_calls
+                        final_delta = ChatDelta(tool_calls=delta_tool_calls)
+                        final_finish_reason = "tool_calls"
+                except Exception as e:
+                    logger.debug(f"Tool call parsing failed: {e}")
+
+            # Send final chunk with finish_reason
+            yield ChatCompletionChunk(
+                id=chat_id,
+                created=created,
+                model=request.model,
+                system_fingerprint=request.model,
+                choices=[
+                    ChatCompletionChunkChoice(
+                        index=0,
+                        delta=final_delta,
+                        finish_reason=final_finish_reason,
+                        logprobs=None,
+                    )
+                ],
+            )
 
             if request.stream_options and request.stream_options.include_usage:
                 created = int(time.time())
@@ -467,10 +506,11 @@ class MLXModel(BaseTextModel):
                     id=chat_id,
                     created=created,
                     model=request.model,
+                    system_fingerprint=request.model,
                     choices=[
                         ChatCompletionChunkChoice(
                             index=0,
-                            delta=ChatMessage(role=Role.ASSISTANT),
+                            delta=ChatDelta(),  # Empty delta for usage chunk
                             finish_reason=None,
                             logprobs=None,
                         )
