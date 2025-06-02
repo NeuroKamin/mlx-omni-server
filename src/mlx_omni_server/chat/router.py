@@ -40,10 +40,6 @@ class ModelManager:
 # Global model manager instance
 _model_manager = ModelManager()
 
-@router.get("/v1/test")
-async def test():
-    return JSONResponse(content={"message": "Hello, World 2!"})
-
 @router.post("/chat/completions", response_model=ChatCompletionResponse)
 @router.post("/v1/chat/completions", response_model=ChatCompletionResponse)
 @router.options("/chat/completions")
