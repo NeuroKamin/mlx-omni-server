@@ -1,5 +1,8 @@
 import json
-from typing import Generator
+import asyncio
+import contextvars
+from typing import Generator, Dict
+from contextlib import asynccontextmanager
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -9,6 +12,33 @@ from .schema import ChatCompletionRequest, ChatCompletionResponse
 from .text_models import BaseTextModel
 
 router = APIRouter(tags=["chat—completions"])
+
+
+class ModelManager:
+    """Thread-safe model manager for handling concurrent requests"""
+    
+    def __init__(self):
+        self._models: Dict[str, BaseTextModel] = {}
+        self._locks: Dict[str, asyncio.Lock] = {}
+        self._main_lock = asyncio.Lock()
+    
+    async def get_model(self, model_id: str, adapter_path: str = None) -> BaseTextModel:
+        """Get or create a model instance in a thread-safe way"""
+        model_key = f"{model_id}:{adapter_path or 'none'}"
+        
+        # Create model-specific lock if it doesn't exist
+        async with self._main_lock:
+            if model_key not in self._locks:
+                self._locks[model_key] = asyncio.Lock()
+        
+        # Use model-specific lock for actual model operations
+        async with self._locks[model_key]:
+            if model_key not in self._models:
+                self._models[model_key] = load_model(model_id, adapter_path)
+            return self._models[model_key]
+
+# Global model manager instance
+_model_manager = ModelManager()
 
 
 @router.post("/chat/completions", response_model=ChatCompletionResponse)
@@ -30,7 +60,7 @@ async def create_chat_completion(request: ChatCompletionRequest = None):
             }
         )
 
-    text_model = _create_text_model(
+    text_model = await _model_manager.get_model(
         request.model, request.get_extra_params().get("adapter_path")
     )
 
@@ -71,18 +101,3 @@ async def create_chat_completion(request: ChatCompletionRequest = None):
             "Transfer-Encoding": "chunked",
         },
     )
-
-
-_last_model_id = None
-_last_text_model = None
-
-
-def _create_text_model(model_id: str, adapter_path: str = None) -> BaseTextModel:
-    global _last_model_id, _last_text_model
-    if model_id == _last_model_id:
-        return _last_text_model
-
-    model = load_model(model_id, adapter_path)
-    _last_text_model = model
-    _last_model_id = model_id
-    return model

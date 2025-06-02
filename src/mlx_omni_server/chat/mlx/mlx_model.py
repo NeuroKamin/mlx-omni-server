@@ -1,6 +1,7 @@
 import time
 import uuid
 from typing import Any, Dict, Generator, List, Optional
+import contextvars
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -29,6 +30,23 @@ from .tools.chat_tokenizer import ChatTokenizer
 from .tools.reasoning_decoder import ReasoningDecoder
 
 
+class RequestContext:
+    """Context for a single request to avoid shared state issues"""
+    
+    def __init__(self, model_id: str, model: nn.Module, tokenizer: ChatTokenizer):
+        self.prompt_cache = PromptCache()
+        self.prompt_cache_tokens_count = 0
+        self.reasoning_decoder = ReasoningDecoder(tokenizer)
+        self.model_id = model_id
+        self.model = model
+
+
+# Context variable for request-specific data
+_request_context: contextvars.ContextVar[Optional[RequestContext]] = contextvars.ContextVar(
+    'request_context', default=None
+)
+
+
 class MLXModel(BaseTextModel):
     """MLX Chat Model wrapper with internal parameter management"""
 
@@ -40,10 +58,17 @@ class MLXModel(BaseTextModel):
         self._default_top_p = 1.0
         self._default_top_k = -1
         self._chat_tokenizer = tokenizer
-        self._prompt_cache = PromptCache()
-        self._prompt_cache_tokens_count = 0
-        self._reasoning_decoder = ReasoningDecoder(tokenizer)
         logger.info(f"Initialized MLXModel with model_id: {model_id}")
+
+    def _get_request_context(self) -> RequestContext:
+        """Get or create request context for current async context"""
+        context = _request_context.get()
+        if context is None:
+            context = RequestContext(
+                self._model_id, self._model, self._chat_tokenizer
+            )
+            _request_context.set(context)
+        return context
 
     def _get_generation_params(
         self, request: ChatCompletionRequest
@@ -156,6 +181,9 @@ class MLXModel(BaseTextModel):
         Returns:
             A tuple containing tokenizer, processed prompt, stop checker, and generation kwargs
         """
+        # Get request-specific context
+        ctx = self._get_request_context()
+        
         # Process parameters from request
         params = self._get_generation_params(request)
 
@@ -197,25 +225,25 @@ class MLXModel(BaseTextModel):
         logger.debug(f"Encoded prompt:\n{prompt}")
 
         enable_thinking = template_kwargs.get("enable_thinking", True)
-        self._reasoning_decoder.enable_thinking = enable_thinking
+        ctx.reasoning_decoder.enable_thinking = enable_thinking
         if enable_thinking:
-            self._reasoning_decoder.set_thinking_prefix(True)
-            if prompt.endswith(f"<{self._reasoning_decoder.thinking_tag}>"):
-                self._reasoning_decoder.set_thinking_prefix(True)
+            ctx.reasoning_decoder.set_thinking_prefix(True)
+            if prompt.endswith(f"<{ctx.reasoning_decoder.thinking_tag}>"):
+                ctx.reasoning_decoder.set_thinking_prefix(True)
             else:
-                self._reasoning_decoder.set_thinking_prefix(False)
+                ctx.reasoning_decoder.set_thinking_prefix(False)
 
         # Get tokenizer
         tokenizer = self._chat_tokenizer.tokenizer
 
         # Process prompt cache
         tokenized_prompt = tokenizer.encode(prompt)
-        processed_prompt = self._prompt_cache.get_prompt_cache(
+        processed_prompt = ctx.prompt_cache.get_prompt_cache(
             self._model_id, self._model, tokenized_prompt
         )
-        generate_kwargs["prompt_cache"] = self._prompt_cache.cache
+        generate_kwargs["prompt_cache"] = ctx.prompt_cache.cache
         logger.debug(
-            f"Using {self._prompt_cache.cached_token_count} cached tokens out of {len(tokenized_prompt)} total tokens"
+            f"Using {ctx.prompt_cache.cached_token_count} cached tokens out of {len(tokenized_prompt)} total tokens"
         )
 
         # Setup stop tokens checker if needed
@@ -230,19 +258,20 @@ class MLXModel(BaseTextModel):
         if request.response_format and request.response_format.json_schema:
             generate_kwargs["logits_processors"] = [
                 OutlinesLogitsProcessor(
-                    self._chat_tokenizer.tokenizer, request.response_format
+                    request.response_format.json_schema,
+                    tokenizer,
                 )
             ]
-        elif request.presence_penalty:
+        elif request.logprobs:
             generate_kwargs["logits_processors"] = make_logits_processors(
-                repetition_penalty=request.presence_penalty
+                tokenizer, request.top_logprobs or 5
             )
 
-        # Calculate max tokens for completion
+        # Set max_tokens parameter
         generate_kwargs["max_tokens"] = (
-            request.max_completion_tokens
-            or request.max_tokens
-            or self._default_max_tokens
+            self._default_max_tokens
+            if request.max_tokens is None
+            else request.max_tokens
         )
 
         return processed_prompt, stop_checker, generate_kwargs
@@ -309,11 +338,12 @@ class MLXModel(BaseTextModel):
                 if should_trim:
                     break
 
-            self._prompt_cache_tokens_count = self._prompt_cache.cached_token_count
+            ctx = self._get_request_context()
+            ctx.prompt_cache_tokens_count = ctx.prompt_cache.cached_token_count
             logger.debug(
-                f"The generation is completed, with a total of {self._prompt_cache_tokens_count} tokens cached."
+                f"The generation is completed, with a total of {ctx.prompt_cache_tokens_count} tokens cached."
             )
-            self._prompt_cache.extend_completion_cache(current_tokens)
+            ctx.prompt_cache.extend_completion_cache(current_tokens)
         except Exception as e:
             logger.error(f"Error during stream generation: {str(e)}", exc_info=True)
             raise
@@ -344,9 +374,9 @@ class MLXModel(BaseTextModel):
 
             logger.debug(f"Model Response:\n{completion}")
             reasoning: str | None = None  # avoid UnboundLocalError
-            enable_thinking = self._reasoning_decoder.enable_thinking
+            enable_thinking = self._get_request_context().reasoning_decoder.enable_thinking
             if enable_thinking:
-                reasoning_result = self._reasoning_decoder.decode(completion)
+                reasoning_result = self._get_request_context().reasoning_decoder.decode(completion)
                 if reasoning_result:
                     logger.debug(f"Reasoning result:\n{reasoning_result}")
                     completion = reasoning_result.get("content")
@@ -361,7 +391,7 @@ class MLXModel(BaseTextModel):
                     reasoning=reasoning,
                 )
 
-            cached_tokens = self._prompt_cache_tokens_count
+            cached_tokens = self._get_request_context().prompt_cache_tokens_count
             logger.debug(f"Generate response with {cached_tokens} cached tokens")
 
             prompt_tokens_details = None
@@ -444,9 +474,9 @@ class MLXModel(BaseTextModel):
             final_delta = ChatDelta()  # Empty delta for final chunk
             
             # Process final completion for reasoning and tool calls
-            enable_thinking = self._reasoning_decoder.enable_thinking
+            enable_thinking = self._get_request_context().reasoning_decoder.enable_thinking
             if enable_thinking:
-                reasoning_result = self._reasoning_decoder.decode(full_completion)
+                reasoning_result = self._get_request_context().reasoning_decoder.decode(full_completion)
                 if reasoning_result:
                     logger.debug(f"Final reasoning result:\n{reasoning_result}")
                     full_completion = reasoning_result.get("content") or full_completion
@@ -491,7 +521,7 @@ class MLXModel(BaseTextModel):
 
             if request.stream_options and request.stream_options.include_usage:
                 created = int(time.time())
-                cached_tokens = self._prompt_cache_tokens_count
+                cached_tokens = self._get_request_context().prompt_cache_tokens_count
                 logger.debug(f"Stream response with {cached_tokens} cached tokens")
 
                 prompt_tokens_details = None
