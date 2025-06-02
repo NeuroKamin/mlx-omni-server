@@ -1,0 +1,20 @@
+name: Self-Hosted Runner Workflow
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: [self-hosted, server]
+    steps:
+      - name: Обновление из репозитория
+        run: |
+          cd /Users/kamin/prod/mlx-omni-server
+          git pull origin main
+      
+      - name: Перезапуск сервиса
+        run: |
+          launchctl unload ~/Library/LaunchAgents/com.kamin.omni-server.plist || true
+          launchctl load ~/Library/LaunchAgents/com.kamin.omni-server.plist
