@@ -34,6 +34,17 @@ async def list_models() -> ModelList:
     except Exception as e:
         handle_model_error(e)
 
+@router.get("/models/rescan", response_model=ModelList)
+@router.get("/v1/models/rescan", response_model=ModelList)
+async def rescan_models() -> ModelList:
+    """
+    Rescan the local cache for models.
+    """
+    try:
+        models_service._scan_models()
+        return models_service.list_models()
+    except Exception as e:
+        handle_model_error(e)
 
 @router.get("/models/{model_id:path}", response_model=Model)
 @router.get("/v1/models/{model_id:path}", response_model=Model)
