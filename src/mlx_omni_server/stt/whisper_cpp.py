@@ -1,11 +1,12 @@
-import os
+import asyncio
 import json
-import tempfile
-import subprocess
-from pathlib import Path
-from typing import Union, List
-import re
 import logging
+import os
+import re
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import List, Union
 
 from .schema import (
     ResponseFormat,
@@ -28,7 +29,7 @@ class WhisperCppModel:
         self.model_path = os.path.abspath(model_path)
         self.vad_model_path = os.path.abspath(vad_model_path)
         self.threads = threads
-        
+
         # Проверяем существование файлов
         if not os.path.exists(self.whisper_cli_path):
             raise Exception(f"Whisper CLI not found at: {self.whisper_cli_path}")
@@ -74,7 +75,7 @@ class WhisperCppModel:
 
         # Определяем путь к модели (из request или по умолчанию)
         model_path = self.model_path
-        if request.model and request.model.endswith('.bin'):
+        if request.model and request.model.endswith(".bin"):
             # Если передан путь к .bin файлу, используем его
             model_path = request.model
 
@@ -84,35 +85,50 @@ class WhisperCppModel:
         cmd = [
             self.whisper_cli_path,
             # Основные параметры
-            "--threads", str(self.threads),
-            "--model", model_path,
-            "--file", audio_path,
+            "--threads",
+            str(self.threads),
+            "--model",
+            model_path,
+            "--file",
+            audio_path,
             # Параметры декодирования
-            "--temperature", str(request.temperature) if request.temperature else "0.2",
-            "--word-thold", "0.005",
-            "--no-speech-thold", "0.4",
+            "--temperature",
+            str(request.temperature) if request.temperature else "0.2",
+            "--word-thold",
+            "0.005",
+            "--no-speech-thold",
+            "0.4",
             # Контекст и длина
-            "--max-len", "448",
+            "--max-len",
+            "448",
             # Дополнительные улучшения
             "--suppress-nst",
             "--flash-attn",
             # Вывод JSON
             "--output-json",
-            "--output-file", output_base,
+            "--output-file",
+            output_base,
             # Не печатать цвета в stdout
             "--no-prints",
         ]
 
         # VAD параметры (если модель существует)
         if os.path.exists(self.vad_model_path):
-            cmd.extend([
-                "--vad",
-                "--vad-model", self.vad_model_path,
-                "--vad-threshold", "0.3",
-                "--vad-min-speech-duration-ms", "200",
-                "--vad-min-silence-duration-ms", "300",
-                "--vad-speech-pad-ms", "50",
-            ])
+            cmd.extend(
+                [
+                    "--vad",
+                    "--vad-model",
+                    self.vad_model_path,
+                    "--vad-threshold",
+                    "0.3",
+                    "--vad-min-speech-duration-ms",
+                    "200",
+                    "--vad-min-silence-duration-ms",
+                    "300",
+                    "--vad-speech-pad-ms",
+                    "50",
+                ]
+            )
 
         # Язык
         if request.language:
@@ -124,17 +140,27 @@ class WhisperCppModel:
 
         # Параметры в зависимости от длительности
         if duration_minutes < 5:
-            cmd.extend([
-                "--best-of", "5",
-                "--beam-size", "5",
-            ])
+            cmd.extend(
+                [
+                    "--best-of",
+                    "5",
+                    "--beam-size",
+                    "5",
+                ]
+            )
         else:
-            cmd.extend([
-                "--best-of", "3",
-                "--beam-size", "3",
-                "--max-context", "0",
-                "--entropy-thold", "2.5",
-            ])
+            cmd.extend(
+                [
+                    "--best-of",
+                    "3",
+                    "--beam-size",
+                    "3",
+                    "--max-context",
+                    "0",
+                    "--entropy-thold",
+                    "2.5",
+                ]
+            )
 
         # Временные метки для слов
         if request.timestamp_granularities and "word" in [
@@ -148,40 +174,39 @@ class WhisperCppModel:
 
     def _parse_stdout_output(self, stdout: str) -> dict:
         """Парсинг текстового вывода whisper.cpp"""
-        result = {
-            "text": "",
-            "language": "ru",  # по умолчанию
-            "segments": []
-        }
-        
+        result = {"text": "", "language": "ru", "segments": []}  # по умолчанию
+
         # Парсим строки вида [00:00:00.940 --> 00:00:01.410]   Hello?
-        lines = stdout.strip().split('\n')
+        lines = stdout.strip().split("\n")
         full_text = []
-        
+
         for i, line in enumerate(lines):
-            match = re.match(r'\[(\d{2}:\d{2}:\d{2}\.\d{3}) --> (\d{2}:\d{2}:\d{2}\.\d{3})\]\s+(.*)', line)
+            match = re.match(
+                r"\[(\d{2}:\d{2}:\d{2}\.\d{3}) --> (\d{2}:\d{2}:\d{2}\.\d{3})\]\s+(.*)",
+                line,
+            )
             if match:
                 start_time = self._time_to_seconds(match.group(1))
                 end_time = self._time_to_seconds(match.group(2))
                 text = match.group(3).strip()
-                
+
                 full_text.append(text)
-                
+
                 segment = {
                     "id": i,
                     "start": start_time,
                     "end": end_time,
                     "text": text,
-                    "words": []
+                    "words": [],
                 }
                 result["segments"].append(segment)
-        
+
         result["text"] = " ".join(full_text)
         return result
-    
+
     def _time_to_seconds(self, time_str: str) -> float:
         """Конвертация времени вида 00:00:00.000 в секунды"""
-        parts = time_str.split(':')
+        parts = time_str.split(":")
         hours = int(parts[0])
         minutes = int(parts[1])
         seconds = float(parts[2])
@@ -195,11 +220,15 @@ class WhisperCppModel:
         transcription = data.get("transcription", [])
 
         # Собираем весь текст
-        full_text = " ".join(seg.get("text", "").strip() for seg in transcription if seg.get("text"))
+        full_text = " ".join(
+            seg.get("text", "").strip() for seg in transcription if seg.get("text")
+        )
 
         result = {
             "text": full_text,
-            "language": data.get("result", {}).get("language", ""),  # из вложенного поля
+            "language": data.get("result", {}).get(
+                "language", ""
+            ),  # из вложенного поля
             "segments": [],
         }
 
@@ -220,7 +249,6 @@ class WhisperCppModel:
 
         return result
 
-
     def generate(self, audio_path: str, request: STTRequestForm) -> dict:
         """Транскрибация через whisper.cpp"""
         temp_dir = tempfile.mkdtemp()
@@ -229,44 +257,81 @@ class WhisperCppModel:
             cmd = self._build_whisper_command(audio_path, request, temp_dir)
 
             # Запускаем whisper.cpp
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, check=False
-            )
-            
+            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+
             # Проверяем, какие файлы были созданы
             files_created = os.listdir(temp_dir)
 
             # Ищем JSON файл - должен быть output.json
             json_path = os.path.join(temp_dir, "output.json")
-            
+
             if os.path.exists(json_path):
                 return self._parse_whisper_output(json_path)
             else:
                 # Если JSON не создан, но процесс завершился успешно
                 if result.returncode == 0:
                     # Попробуем найти любой JSON файл
-                    json_files = [f for f in files_created if f.endswith('.json')]
+                    json_files = [f for f in files_created if f.endswith(".json")]
                     if json_files:
                         json_path = os.path.join(temp_dir, json_files[0])
                         return self._parse_whisper_output(json_path)
-                    
+
                     # Если JSON файлов нет, но есть stdout, парсим его
                     if result.stdout:
                         return self._parse_stdout_output(result.stdout)
-                
-                raise Exception(f"Whisper.cpp failed with code {result.returncode}: {result.stderr}")
+
+                raise Exception(
+                    f"Whisper.cpp failed with code {result.returncode}: {result.stderr}"
+                )
 
         except Exception as e:
             raise e
         finally:
             # Очищаем временные файлы
             import shutil
+
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    async def generate_async(self, audio_path: str, request: STTRequestForm) -> dict:
+        """Асинхронная транскрибация через whisper.cpp"""
+        temp_dir = tempfile.mkdtemp()
+        try:
+            cmd = self._build_whisper_command(audio_path, request, temp_dir)
+
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await process.communicate()
+
+            files_created = os.listdir(temp_dir)
+            json_path = os.path.join(temp_dir, "output.json")
+
+            if os.path.exists(json_path):
+                return self._parse_whisper_output(json_path)
+            else:
+                if process.returncode == 0:
+                    json_files = [f for f in files_created if f.endswith(".json")]
+                    if json_files:
+                        json_path = os.path.join(temp_dir, json_files[0])
+                        return self._parse_whisper_output(json_path)
+
+                    if stdout:
+                        return self._parse_stdout_output(stdout.decode())
+
+                raise Exception(
+                    f"Whisper.cpp failed with code {process.returncode}: {stderr.decode()}"
+                )
+        finally:
+            import shutil
+
             shutil.rmtree(temp_dir, ignore_errors=True)
 
     def _generate_subtitle_file(self, result: dict, format: str) -> str:
         """Генерация субтитров из результата"""
         content = []
-        
+
         if format == "srt":
             for i, segment in enumerate(result.get("segments", [])):
                 content.append(str(i + 1))
@@ -275,7 +340,7 @@ class WhisperCppModel:
                 content.append(f"{start_time} --> {end_time}")
                 content.append(segment["text"].strip())
                 content.append("")
-        
+
         elif format == "vtt":
             content.append("WEBVTT")
             content.append("")
@@ -285,7 +350,7 @@ class WhisperCppModel:
                 content.append(f"{start_time} --> {end_time}")
                 content.append(segment["text"].strip())
                 content.append("")
-        
+
         return "\n".join(content)
 
     def _seconds_to_srt_time(self, seconds: float) -> str:
