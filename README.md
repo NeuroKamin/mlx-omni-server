@@ -35,6 +35,8 @@ The server implements OpenAI-compatible endpoints:
 - [Models](https://platform.openai.com/docs/api-reference/models/list)
     - ✅ `/v1/models` - List models
     - ✅ `/v1/models/{model}` - Retrieve or Delete model
+    - ✅ `/v1/models/load` - Download a model asynchronously
+    - ✅ `/v1/models/load/{id}` - Check download status
 - [Images](https://platform.openai.com/docs/api-reference/images)
     - ✅ `/v1/images/generations` - Image generation
 - [Embeddings](https://platform.openai.com/docs/api-reference/embeddings)
@@ -326,6 +328,8 @@ MLX Omni Server uses Hugging Face for model downloading and management. When you
 
 - It's recommended to pre-download models through Hugging Face before using them in your service
 - To use a locally downloaded model, simply set the `model` parameter to the local model path
+
+You can trigger a model download in advance using the `/v1/models/load` endpoint. This returns a task identifier which can be polled via `/v1/models/load/{id}` to check the download status.
 
 ```python
 # Using a model from Hugging Face
