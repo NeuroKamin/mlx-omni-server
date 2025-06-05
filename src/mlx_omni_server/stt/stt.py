@@ -7,6 +7,8 @@ from .whisper_model import STTService
 
 router = APIRouter(tags=["speech-to-text"])
 
+stt_service = STTService()
+
 
 @router.post("/audio/transcriptions", response_model=TranscriptionResponse)
 @router.post("/v1/audio/transcriptions", response_model=TranscriptionResponse)
@@ -14,7 +16,6 @@ async def create_transcription(request: STTRequestForm = Depends()):
     """
     Transcribe audio file to text.
     """
-    stt_service = STTService()
     try:
         result = await stt_service.transcribe(request)
 
