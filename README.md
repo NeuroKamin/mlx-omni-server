@@ -91,6 +91,16 @@ mlx-omni-server --port 8000
 mlx-omni-server --help
 ```
 
+### Environment Variables
+
+`WHISPER_CPP_MAX_WORKERS` controls how many whisper.cpp models can run in
+parallel for speech-to-text. The same number of models is preloaded at startup.
+Increase this value if you expect multiple concurrent transcription requests.
+
+```bash
+export WHISPER_CPP_MAX_WORKERS=2  # allow two concurrent whisper.cpp workers
+```
+
 ### Basic Client Setup
 
 ```python

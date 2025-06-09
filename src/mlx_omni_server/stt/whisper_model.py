@@ -10,11 +10,27 @@ from .whisper_mlx import WhisperModel
 
 class STTService:
     _whisper_model: WhisperModel | None = None
-    _whisper_cpp_pools: Dict[Tuple[str, str, str, int], List[WhisperCppModel]] = {}
-    _semaphores: Dict[Tuple[str, str, str, int], asyncio.Semaphore] = {}
+    _whisper_cpp_pools: Dict[
+        Tuple[str, str, str, int], List[WhisperCppModel]
+    ] = {}
+    _semaphores: Dict[Tuple[str, str, str, int], asyncio.BoundedSemaphore] = {}
 
-    def __init__(self):
-        pass
+    def __init__(self) -> None:
+        """Pre-create whisper.cpp models for the configured worker count."""
+        key = self._get_cpp_key()
+        if key not in self.__class__._semaphores:
+            max_workers = int(os.getenv("WHISPER_CPP_MAX_WORKERS", "2"))
+            self.__class__._semaphores[key] = asyncio.BoundedSemaphore(max_workers)
+            pool = self.__class__._whisper_cpp_pools.setdefault(key, [])
+            for _ in range(max_workers):
+                pool.append(
+                    WhisperCppModel(
+                        whisper_cli_path=key[0],
+                        model_path=key[1],
+                        vad_model_path=key[2],
+                        threads=key[3],
+                    )
+                )
 
     def _get_whisper_model(self) -> WhisperModel:
         if self.__class__._whisper_model is None:
@@ -31,21 +47,23 @@ class STTService:
 
     async def _acquire_cpp_model(self) -> WhisperCppModel:
         key = self._get_cpp_key()
-        pool = self.__class__._whisper_cpp_pools.setdefault(key, [])
         if key not in self.__class__._semaphores:
-            max_workers = int(os.getenv("WHISPER_CPP_MAX_WORKERS", "1"))
-            self.__class__._semaphores[key] = asyncio.Semaphore(max_workers)
+            # fallback when service was not initialised yet
+            max_workers = int(os.getenv("WHISPER_CPP_MAX_WORKERS", "2"))
+            self.__class__._semaphores[key] = asyncio.BoundedSemaphore(max_workers)
+            pool = self.__class__._whisper_cpp_pools.setdefault(key, [])
+            for _ in range(max_workers):
+                pool.append(
+                    WhisperCppModel(
+                        whisper_cli_path=key[0],
+                        model_path=key[1],
+                        vad_model_path=key[2],
+                        threads=key[3],
+                    )
+                )
 
         await self.__class__._semaphores[key].acquire()
-        if pool:
-            return pool.pop()
-
-        return WhisperCppModel(
-            whisper_cli_path=key[0],
-            model_path=key[1],
-            vad_model_path=key[2],
-            threads=key[3],
-        )
+        return self.__class__._whisper_cpp_pools[key].pop()
 
     def _release_cpp_model(self, model: WhisperCppModel) -> None:
         key = self._get_cpp_key()
