@@ -19,7 +19,7 @@ class STTService:
         """Pre-create whisper.cpp models for the configured worker count."""
         key = self._get_cpp_key()
         if key not in self.__class__._semaphores:
-            max_workers = int(os.getenv("WHISPER_CPP_MAX_WORKERS", "2"))
+            max_workers = int(os.getenv("WHISPER_CPP_MAX_WORKERS", "4"))
             self.__class__._semaphores[key] = asyncio.BoundedSemaphore(max_workers)
             pool = self.__class__._whisper_cpp_pools.setdefault(key, [])
             for _ in range(max_workers):
