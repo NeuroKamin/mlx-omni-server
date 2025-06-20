@@ -1,118 +1,78 @@
-# MLX Omni Server
+# MLX Omni Server [Kamin]
 
-[![image](https://img.shields.io/pypi/v/mlx-omni-server.svg)](https://pypi.python.org/pypi/mlx-omni-server)
+MLX Omni Server — это локальный сервер для инференса, работающий на библиотеке MLX от Apple. Сервер ориентирован на чипы Apple Silicon (M-серия) и реализует OpenAI-совместимые API, позволяя им интегрироваться с клиентами OpenAI и запускать модели локально.
 
-![alt text](docs/banner.png)
+## Возможности
 
-MLX Omni Server is a local inference server powered by Apple's MLX framework, specifically designed for Apple Silicon (M-series) chips. It implements
-OpenAI-compatible API endpoints, enabling seamless integration with existing OpenAI SDK clients while leveraging the power of local ML inference.
+- 🚀 **Оптимизация под Apple Silicon**: работает на MLX, оптимизирован для M1/M2/M3/M4
+- 🔌 **Совместимость с API OpenAI**: полная замена оригинальных эндпойнтов
+- 🎯 **Разнообразные возможности ИИ**:
+    - Обработка аудио (TTS и STT)
+    - Генерация текста
+    - Создание эмбедингов
+    - Генерация изображений
+- ⚡️ **Высокая производительность**: локальная инференция с аппаратным ускорением
+- 🔐 **Приватность**: все вычисления выполняются на вашем компьютере
+- 🛠 **Поддержка SDK**: работает с официальным SDK OpenAI и другими клиентами
+- ♻️ **Автоматическая очистка кеша**: ненужные загрузки удаляются для экономии места
 
-## Features
+## Поддерживаемые эндпойнты API
 
-- 🚀 **Apple Silicon Optimized**: Built on MLX framework, optimized for M1/M2/M3/M4 series chips
-- 🔌 **OpenAI API Compatible**: Drop-in replacement for OpenAI API endpoints
-- 🎯 **Multiple AI Capabilities**:
-    - Audio Processing (TTS & STT)
-    - Chat Completion
-    - Image Generation
-- ⚡ **High Performance**: Local inference with hardware acceleration
-- 🔐 **Privacy-First**: All processing happens locally on your machine
-- 🛠 **SDK Support**: Works with official OpenAI SDK and other compatible clients
-
-## Supported API Endpoints
-
-The server implements OpenAI-compatible endpoints:
+Сервер реализует OpenAI-совместимые эндпойнты:
 
 - [Chat completions](https://platform.openai.com/docs/api-reference/chat): `/v1/chat/completions`
-    - ✅ Chat
-    - ✅ Tools, Function Calling
-    - ✅ Structured Output
+    - ✅ Чаты
+    - ✅ Инструменты, вызов функций
+    - ✅ Структурированный вывод
     - ✅ LogProbs
     - 🚧 Vision
 - [Audio](https://platform.openai.com/docs/api-reference/audio)
-    - ✅ `/v1/audio/speech` - Text-to-Speech
-    - ✅ `/v1/audio/transcriptions` - Speech-to-Text
+    - ✅ `/v1/audio/speech` - текст в речь
+    - ✅ `/v1/audio/transcriptions` - речь в текст
 - [Models](https://platform.openai.com/docs/api-reference/models/list)
-    - ✅ `/v1/models` - List models
-    - ✅ `/v1/models/{model}` - Retrieve or Delete model
-    - ✅ `/v1/models/load` - Download a model asynchronously
-    - ✅ `/v1/models/load/{id}` - Check download status
+    - ✅ `/v1/models` - список моделей
+    - ✅ `/v1/models/{model}` - получить или удалить модель
+    - ✅ `/v1/models/load` - загрузка модели в фоне
+    - ✅ `/v1/models/load/{id}` - статус загрузки
 - [Images](https://platform.openai.com/docs/api-reference/images)
-    - ✅ `/v1/images/generations` - Image generation
+    - ✅ `/v1/images/generations` - генерация изображений
 - [Embeddings](https://platform.openai.com/docs/api-reference/embeddings)
-    - ✅ `/v1/embeddings` - Create embeddings for text
+    - ✅ `/v1/embeddings` - создание эмбеддингов
 
 
-
-## Quick Start
-
-Follow these simple steps to get started with MLX Omni Server:
-
-1. Install the package
+### Параметры сервера
 
 ```bash
-pip install mlx-omni-server
-```
-
-2. Start the server
-
-```bash
-mlx-omni-server
-```
-
-3. Run a simple chat example using curl
-
-```bash
-curl http://localhost:10240/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "mlx-community/gemma-3-1b-it-4bit-DWQ",
-    "messages": [
-      {
-        "role": "user",
-        "content": "What can you do?"
-      }
-    ]
-  }'
-```
-
-That's it! You're now running AI locally on your Mac. See [Advanced Usage](#advanced-usage) for more examples.
-
-### Server Options
-
-```bash
-# Start with default settings (port 10240)
+# Запуск с настройками по умолчанию (port 10240)
 mlx-omni-server
 
-# Or specify a custom port
+# Или укажите свой порт
 mlx-omni-server --port 8000
 
-# View all available options
+# Посмотреть все доступные опции
 mlx-omni-server --help
 ```
 
-### Environment Variables
+### Переменные окружения
 
-`WHISPER_CPP_MAX_WORKERS` controls how many whisper.cpp models can run in
-parallel for speech-to-text. The same number of models is preloaded at startup.
-Increase this value if you expect multiple concurrent transcription requests.
+`WHISPER_CPP_MAX_WORKERS` задает число одновременных копий whisper.cpp для распознавания речи. Столько же моделей может находиться одновременно в памяти. Увеличьте значение, если ожидаете много параллельных запросов.
 
 ```bash
-export WHISPER_CPP_MAX_WORKERS=2  # allow two concurrent whisper.cpp workers
+export WHISPER_CPP_MAX_WORKERS=2  # разрешить две копии whisper.cpp
 ```
 
-### Basic Client Setup
+### Базовая настройка клиента
 
 ```python
 from openai import OpenAI
 
-# Connect to your local server
+# Подключение к локальному серверу
 client = OpenAI(
-    base_url="http://localhost:10240/v1",  # Point to local server
-    api_key="not-needed"                   # API key not required
+    base_url="http://localhost:10240/v1",  # адрес локального сервера
+    api_key="not-needed"                   # ключ не требуется
 )
 
-# Make a simple chat request
+# Простой запрос к чату
 response = client.chat.completions.create(
     model="mlx-community/gemma-3-1b-it-4bit-DWQ",
     messages=[{"role": "user", "content": "Hello, how are you?"}]
@@ -120,20 +80,18 @@ response = client.chat.completions.create(
 print(response.choices[0].message.content)
 ```
 
-## Advanced Usage
+## Расширенное использование
 
-MLX Omni Server supports multiple ways of interaction and various AI capabilities. Here's how to use each:
+MLX Omni Server поддерживает несколько способов взаимодействия с моделями.
 
-### API Usage Options
-
-MLX Omni Server provides flexible ways to interact with AI capabilities:
+### Варианты обращения к API
 
 #### REST API
 
-Access the server directly using HTTP requests:
+Можно обращаться напрямую через HTTP:
 
 ```bash
-# Chat completions endpoint
+# Эндпойнт для чата
 curl http://localhost:10240/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
@@ -141,30 +99,28 @@ curl http://localhost:10240/v1/chat/completions \
     "messages": [{"role": "user", "content": "Hello"}]
   }'
 
-# Get available models
+# Список моделей
 curl http://localhost:10240/v1/models
 ```
 
 #### OpenAI SDK
 
-Use the official OpenAI Python SDK for seamless integration:
+Используйте официальный Python SDK:
 
 ```python
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="http://localhost:10240/v1",  # Point to local server
-    api_key="not-needed"                   # API key not required for local server
+    base_url="http://localhost:10240/v1",  # адрес локального сервера
+    api_key="not-needed"                   # для локальной работы не нужен
 )
 ```
 
-See the FAQ section for information on using TestClient for development.
+В разделе FAQ есть информация о работе через TestClient.
 
+### Примеры API
 
-
-### API Examples
-
-#### Chat Completion
+#### Чат
 
 ```python
 response = client.chat.completions.create(
@@ -174,7 +130,7 @@ response = client.chat.completions.create(
     {"role": "user", "content": "Hello!"}
     ],
     temperature=0,
-    stream=True  # this time, we set stream=True
+    stream=True
 )
 
 for chunk in response:
@@ -207,18 +163,17 @@ curl http://localhost:10240/v1/chat/completions \
 
 </details>
 
-#### Text-to-Speech
+#### Текст в речь
 
 ```python
 speech_file_path = "mlx_example.wav"
 response = client.audio.speech.create(
   model="lucasnewman/f5-tts-mlx",
-  voice="alloy", # voice si not working for now
+  voice="alloy",
   input="MLX project is awsome.",
 )
 response.stream_to_file(speech_file_path)
 ```
-
 
 <details>
 <summary>Curl Example</summary>
@@ -236,7 +191,7 @@ curl -X POST "http://localhost:10240/v1/audio/speech" \
 
 </details>
 
-#### Speech-to-Text
+#### Речь в текст
 
 ```python
 audio_file = open("speech.mp3", "rb")
@@ -268,8 +223,37 @@ Response:
 
 </details>
 
+##### Использование whisper.cpp
 
-#### Image Generation
+Для более быстрого распознавания речи сервер может использовать [whisper.cpp](https://github.com/ggerganov/whisper.cpp).
+
+Сборите проект из исходников:
+
+```bash
+git clone https://github.com/ggerganov/whisper.cpp
+cd whisper.cpp
+make
+```
+
+Бинарник `whisper-cli` нужно поместить в `whisper.cpp/build/bin` в корне этого репозитория. Модели `ggml-large-v3.bin` и `ggml-silero-v5.1.2.bin` следует разместить в `whisper.cpp/models/`.
+
+Скачивание модели:
+
+```bash
+./models/download-ggml-model.sh large-v3
+```
+
+При запуске сервер автоматически ищет этот бинарник. Пути можно переопределить переменными окружения:
+
+- `WHISPER_CPP_CLI` — путь к `whisper-cli`
+- `WHISPER_CPP_MODEL` — модель для распознавания
+- `WHISPER_CPP_VAD_MODEL` — модель VAD
+- `WHISPER_CPP_THREADS` — число потоков
+- `WHISPER_CPP_MAX_WORKERS` — количество предварительно запущенных копий
+
+`WHISPER_CPP_MAX_WORKERS` управляет числом рабочих процессов whisper.cpp и позволяет увеличить пропускную способность при необходимости.
+
+#### Генерация изображений
 
 ```python
 image_response = client.images.generate(
@@ -278,7 +262,6 @@ image_response = client.images.generate(
     n=1,
     size="512x512"
 )
-
 ```
 
 <details>
@@ -293,12 +276,11 @@ curl http://localhost:10240/v1/images/generations \
     "n": 1,
     "size": "1024x1024"
   }'
-
 ```
 
 </details>
 
-#### Embeddings
+#### Эмбеддинги
 
 ```python
 # Generate embedding for a single text
@@ -326,118 +308,94 @@ curl http://localhost:10240/v1/embeddings \
 
 </details>
 
-
-For more detailed examples, check out the [examples](examples) directory.
+Для дополнительных примеров обратитесь к папке [examples](examples).
 
 ## FAQ
 
+### Как управляются модели?
 
-### How are models managed?
+MLX Omni Server использует Hugging Face для загрузки и хранения моделей. Если указанная модель еще не скачана, она будет загружена при первом запросе. Однако это может занять значительное время.
 
-MLX Omni Server uses Hugging Face for model downloading and management. When you specify a model ID that hasn't been downloaded yet, the framework will automatically download it. However, since download times can vary significantly:
+- Рекомендуется заранее скачивать модели через Hugging Face
+- Для использования модели из локальной папки передайте путь в `model`
 
-- It's recommended to pre-download models through Hugging Face before using them in your service
-- To use a locally downloaded model, simply set the `model` parameter to the local model path
-
-You can trigger a model download in advance using the `/v1/models/load` endpoint. This returns a task identifier which can be polled via `/v1/models/load/{id}` to check the download status.
+Заранее скачать модель можно через `/v1/models/load`. Ответ содержит идентификатор, который можно отследить через `/v1/models/load/{id}`.
 
 ```python
-# Using a model from Hugging Face
+# Модель с Hugging Face
 response = client.chat.completions.create(
-    model="mlx-community/gemma-3-1b-it-4bit-DWQ",  # Will download if not available
+    model="mlx-community/gemma-3-1b-it-4bit-DWQ",
     messages=[{"role": "user", "content": "Hello"}]
 )
 
-# Using a local model
+# Локальная модель
 response = client.chat.completions.create(
-    model="/path/to/your/local/model",  # Local model path
+    model="/path/to/your/local/model",
     messages=[{"role": "user", "content": "Hello"}]
 )
 ```
 
-The models currently supported on the machine can also be accessed through the following methods
+Доступные модели на системе можно просмотреть запросом:
 
 ```bash
 curl http://localhost:10240/v1/models
 ```
 
+### Как указать модель для запроса?
 
-### How do I specify which model to use?
-
-Use the `model` parameter when creating a request:
-
-```python
-response = client.chat.completions.create(
-    model="mlx-community/gemma-3-1b-it-4bit-DWQ",  # Specify model here
-    messages=[{"role": "user", "content": "Hello"}]
-)
-```
-
-
-### Can I use TestClient for development?
-
-Yes, TestClient allows you to use the OpenAI client without starting a local server. This is particularly useful for development and testing scenarios:
+Передайте параметр `model`:
 
 ```python
-from openai import OpenAI
-from fastapi.testclient import TestClient
-from mlx_omni_server.main import app
-
-# Use TestClient directly - no network service needed
-client = OpenAI(
-    http_client=TestClient(app)
-)
-
-# Now you can use the client just like with a running server
 response = client.chat.completions.create(
     model="mlx-community/gemma-3-1b-it-4bit-DWQ",
     messages=[{"role": "user", "content": "Hello"}]
 )
 ```
 
-This approach bypasses the HTTP server entirely, making it ideal for unit testing and quick development iterations.
+### Можно ли использовать TestClient для разработки?
+
+Да. TestClient позволяет обращаться к API без запуска HTTP-сервера, что удобно для тестов.
+
+```python
+from openai import OpenAI
+from fastapi.testclient import TestClient
+from mlx_omni_server.main import app
+
+client = OpenAI(
+    http_client=TestClient(app)
+)
+
+response = client.chat.completions.create(
+    model="mlx-community/gemma-3-1b-it-4bit-DWQ",
+    messages=[{"role": "user", "content": "Hello"}]
+)
+```
+
+Этот метод полезен для модульных тестов и быстрых итераций.
+
+### Что делать, если при запуске появляются ошибки?
+
+- Убедитесь, что это Mac на Apple Silicon (M1/M2/M3/M4)
+- Проверьте, что версия Python не ниже 3.9
+- Убедитесь, что установлена актуальная версия mlx-omni-server
+- Ознакомьтесь с логами для деталей
 
 
-### What if I get errors when starting the server?
+## Лицензия
 
-- Confirm you're using an Apple Silicon Mac (M1/M2/M3/M4)
-- Check that your Python version is 3.9 or higher
-- Verify you have the latest version of mlx-omni-server installed
-- Check the log output for more detailed error information
+Проект распространяется по лицензии MIT — см. [LICENSE](LICENSE).
 
+## Благодарности
 
-## Contributing
+- Создано с [MLX](https://github.com/ml-explore/mlx) от Apple
+- Дизайн API вдохновлен [OpenAI](https://openai.com)
+- Сервер базируется на [FastAPI](https://fastapi.tiangolo.com/)
+- Чат от [mlx-lm](https://github.com/ml-explore/mlx-examples/tree/main/llms/mlx_lm)
+- Генерация изображений через [mflux](https://github.com/filipstrand/mflux)
+- TTS проекты [lucasnewman/f5-tts-mlx](https://github.com/lucasnewman/f5-tts-mlx) и [Blaizzy/mlx-audio](https://github.com/Blaizzy/mlx-audio)
+- STT на базе [mlx-whisper](https://github.com/ml-explore/mlx-examples/blob/main/whisper/README.md)
+- Эмбеддинги от [mlx-embeddings](https://github.com/Blaizzy/mlx-embeddings)
 
-We welcome contributions! If you're interested in contributing to MLX Omni Server, please check out our [Development Guide](docs/development_guide.md)
-for detailed information about:
+## Отказ от ответственности
 
-- Setting up the development environment
-- Running the server in development mode
-- Contributing guidelines
-- Testing and documentation
-
-For major changes, please open an issue first to discuss what you would like to change.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- Built with [MLX](https://github.com/ml-explore/mlx) by Apple
-- API design inspired by [OpenAI](https://openai.com)
-- Uses [FastAPI](https://fastapi.tiangolo.com/) for the server implementation
-- Chat(text generation) by [mlx-lm](https://github.com/ml-explore/mlx-examples/tree/main/llms/mlx_lm)
-- Image generation by [mflux](https://github.com/filipstrand/mflux)
-- Text-to-Speech by [lucasnewman/f5-tts-mlx](https://github.com/lucasnewman/f5-tts-mlx) & [Blaizzy/mlx-audio](https://github.com/Blaizzy/mlx-audio)
-- Speech-to-Text by [mlx-whisper](https://github.com/ml-explore/mlx-examples/blob/main/whisper/README.md)
-- Embeddings by [mlx-embeddings](https://github.com/Blaizzy/mlx-embeddings)
-
-## Disclaimer
-
-This project is not affiliated with or endorsed by OpenAI or Apple. It's an independent implementation that provides OpenAI-compatible APIs using
-Apple's MLX framework.
-
-## Star History 🌟
-
-[![Star History Chart](https://api.star-history.com/svg?repos=madroidmaq/mlx-omni-server&type=Date)](https://star-history.com/#madroidmaq/mlx-omni-server&Date)
+Этот проект не является официальным продуктом OpenAI или Apple. Это независимая реализация API OpenAI на базе MLX.
