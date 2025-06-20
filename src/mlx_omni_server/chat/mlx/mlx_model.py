@@ -258,8 +258,8 @@ class MLXModel(BaseTextModel):
         if request.response_format and request.response_format.json_schema:
             generate_kwargs["logits_processors"] = [
                 OutlinesLogitsProcessor(
-                    request.response_format.json_schema,
-                    tokenizer,
+                    tokenizer,                      # Первый аргумент - tokenizer
+                    request.response_format,        # Второй аргумент - response_format
                 )
             ]
         elif request.logprobs:
