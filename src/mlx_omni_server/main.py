@@ -5,6 +5,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .chat.router import _model_manager
 from .middleware.logging import RequestResponseLoggingMiddleware
 from .routers import api_router
 
@@ -27,6 +28,12 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+
+
+@app.on_event("startup")
+async def _start_cleanup() -> None:
+    """Start background cleanup for loaded models"""
+    _model_manager.start_cleanup_task()
 
 
 def build_parser():
