@@ -1,17 +1,51 @@
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from datetime import datetime, timedelta
+import json
 from .asr_service import RealtimeASRService
+import numpy as np
 
 router = APIRouter(tags=["realtime"])
 
+PHRASE_TIMEOUT = 3.0  # seconds
+
 asr_service = RealtimeASRService()
 
+@router.websocket("/ws/realtime")
+@router.websocket("/v1/ws/realtime")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    print("Client connected")
 
-@router.post("/realtime/predict")
-@router.post("/v1/realtime/predict")
-async def predict_audio(request: Request):
+    phrase_bytes = bytearray()
+    phrase_time = None
+
     try:
-        audio_bytes = await request.body()
-        text = asr_service.transcribe(audio_bytes)
-        return {"text": text}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        while True:
+            data = await websocket.receive_bytes()
+            now = datetime.utcnow()
+
+            if phrase_time and now - phrase_time > timedelta(seconds=PHRASE_TIMEOUT):
+                # Обнуляем фразу при таймауте
+                phrase_bytes = bytearray()
+                phrase_complete = True
+            else:
+                phrase_complete = False
+
+            phrase_time = now
+            phrase_bytes.extend(data)
+
+            try:
+                # Распознаем
+                text = asr_service.transcribe(bytes(phrase_bytes))
+
+                await websocket.send_text(json.dumps({
+                    "text": text,
+                    "phrase_complete": phrase_complete
+                }))
+            except Exception as e:
+                await websocket.send_text(json.dumps({
+                    "error": str(e)
+                }))
+
+    except WebSocketDisconnect:
+        print("Client disconnected")
