@@ -41,11 +41,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_text(json.dumps({
                     "text": text,
                     "phrase_complete": phrase_complete
-                }))
+                }, ensure_ascii=False))
             except Exception as e:
                 await websocket.send_text(json.dumps({
                     "error": str(e)
-                }))
+                }, ensure_ascii=False))
 
     except WebSocketDisconnect:
         print("Client disconnected")
