@@ -5,7 +5,7 @@ from mlx_whisper import transcribe as whisper_transcribe
 class RealtimeASRService:
     sample_rate = 16000
 
-    def __init__(self, model_path="large-v3"):
+    def __init__(self, model_path="models/large-v3"):
         self.model_path = model_path
 
     def transcribe(self, audio_bytes: bytes) -> str:
